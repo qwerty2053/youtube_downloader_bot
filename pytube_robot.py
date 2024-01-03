@@ -17,7 +17,6 @@ from pprint import pprint
 from io import BytesIO
 import sqlite3 as sql
 import subprocess
-import requests
 import logging
 import urllib
 import os
@@ -28,7 +27,7 @@ if subprocess.getstatusoutput('ffmpeg')[0] != 1:
     print("ffmpeg is not installed")
     exit(1)
 
-TOKEN = ""
+TOKEN = "6108391846:AAGB8WgwZRnZMS4FsO3mHpUY-hEiP3fsajQ"
 ESCAPE_CHARS_REGEX = re.compile(r"[_*\\~`>#+\-=|{}.!()\[\]]")
 VIDEO_URL_REGEX = re.compile(r"^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube(-nocookie)?\.com|youtu.be))(\/(?:["
                              r"\w\-]+\?v=|embed\/|live\/|v\/)?)([\w\-]+)(\S+)?$")
@@ -122,7 +121,8 @@ def get_video_info(url: str) -> dict:
         stream_info = {'stream': stream,
                        'filesize_mb': round(stream.filesize_mb, 1),
                        'is_progressive': stream.is_progressive,
-                       'default_filename': stream.default_filename}
+                       'default_filename': stream.default_filename,
+                       'lang': [i[-2:] for i in stream.url.split("&") if i.startswith("xtags")][0]}
 
         if stream.type == 'audio':
             stream_info['bitrate'] = stream.abr
@@ -148,7 +148,8 @@ def video_size_with_sound_normalizer(video_info: dict) -> dict:
     audio_size = int(max(video_info['audio'],
                      key=lambda x: int(x['bitrate'][:-4]))['filesize_mb'])
     for video in video_info["video"]:
-        video["filesize_mb"] = round(video["filesize_mb"] + audio_size, 1)
+        if not video["is_progressive"]:
+            video["filesize_mb"] = round(video["filesize_mb"] + audio_size, 1)
     return video_info
 
 
@@ -308,14 +309,14 @@ async def report(call):
 
     if type_ == 'video' and not stream['is_progressive']:
         title = str(stream['default_filename'])
-        os.rename(filename, filename + str(call.from_user.id) + "video")
-        filename += str(call.from_user.id) + "video"
+        os.rename(filename, f"{filename}{call.from_user.id}video")
+        filename += f"{call.from_user.id}video"
 
         audio_stream = max(streams[call.from_user.id][video_url]['audio'],
                            key=lambda x: int(x['bitrate'][:-4]))['stream']
         audio_filename = download_from_youtube(audio_stream)
-        os.rename(audio_filename, audio_filename + str(call.from_user.id) + 'audio')
-        audio_filename += str(call.from_user.id) + "audio"
+        os.rename(audio_filename, f"{audio_filename}{call.from_user.id}audio")
+        audio_filename += f"{call.from_user.id}audio"
         await bot.edit_message_caption(chat_id=call.from_user.id,
                                        caption=generate_video_title_and_author_message(
                                            streams[call.from_user.id][video_url]) + "\n📦 Merging\\.\\.\\.",
@@ -409,14 +410,14 @@ async def get_text(message):
             streams.setdefault(message.chat.id, {})[info['info']['watch_url']] = info
         except pytube.exceptions.AgeRestrictedError as exc:
             printl(exc)
-            await bot.delete_message(message.chat.id, message.message_id)
             await bot.send_message(message.chat.id, f'🚫 [This video]({markdown_prepare(message.text)}) is age restricted\\.',
                                    parse_mode="MarkdownV2")
+            await bot.delete_message(message.chat.id, message.message_id)
         except Exception as exc:
             printl(exc)
-            await bot.delete_message(message.chat.id, message.message_id)
             await bot.send_message(message.chat.id, f'🚫 An error occured while fetching [this video]({markdown_prepare(message.text)})\\.',
                                    parse_mode="MarkdownV2")
+            await bot.delete_message(message.chat.id, message.message_id)
         else:
             download_options = generate_download_options(info)
             reply = generate_link_reply_message(info)
@@ -424,15 +425,23 @@ async def get_text(message):
             preview_url = info['info']['thumbnail_url']
             preview = BytesIO(urllib.request.urlopen(preview_url).read())
             await bot.send_chat_action(message.chat.id, 'upload_photo')
-            await bot.delete_message(message.chat.id, message.message_id)
             await bot.send_photo(message.chat.id, preview, caption=reply,
                                  reply_markup=markup_inline,
                                  parse_mode="MarkdownV2")
-
+            await bot.delete_message(message.chat.id, message.message_id)
     else:
-        await bot.delete_message(message.chat.id, message.message_id)
         await bot.send_message(message.chat.id,
                                f"🔗 Send me a YouTube video link")
+        await bot.delete_message(message.chat.id, message.message_id)
 
 
 executor.start_polling(dp, skip_updates=True)
+
+# TODO
+# Logging to file
+# Video and audio language choice
+# Thumbnail ratio
+# Speed up merging audio and video
+# Bypass age limit w/ logging in to a google account
+# Use database
+# Handle possible errors
