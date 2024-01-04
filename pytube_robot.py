@@ -31,7 +31,7 @@ VIDEO_URL_REGEX = re.compile(r"^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube(-no
                              r"\w\-]+\?v=|embed\/|live\/|v\/)?)([\w\-]+)(\S+)?$")
 PRINT_LOGS = True
 DB_FILENAME = "youtube_bot_database.db"
-UPLOAD_FILE_SIZE_LIMIT_MB = 50
+UPLOAD_FILE_SIZE_LIMIT_MB = 2000
 
 logging.basicConfig(level=logging.INFO)
 
