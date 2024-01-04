@@ -284,7 +284,7 @@ def make_unique_filename(filename: str) -> str:
     title, _, extension = filename.rpartition(".")
     listdir = [i for i in listdir if i.startswith(title) and i.endswith(extension)]
     if "_" in title:
-        i = int(title[title.rfind("_"):]) + 1
+        i = int(title[title.rfind("_")+1:]) + 1
     else:
         i = 2
     new_filename = f"{title}_{i}.{extension}"
