@@ -31,9 +31,16 @@ VIDEO_URL_REGEX = re.compile(r"^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube(-no
                              r"\w\-]+\?v=|embed\/|live\/|v\/)?)([\w\-]+)(\S+)?$")
 PRINT_LOGS = True
 DB_FILENAME = "youtube_bot_database.db"
-UPLOAD_FILE_SIZE_LIMIT_MB = 2000
+UPLOAD_FILE_SIZE_LIMIT_MB = 50
 
 logging.basicConfig(level=logging.INFO)
+
+# STORE_LOGS_IN_FILES = True
+# if STORE_LOGS_IN_FILES:
+#     LOGS_DIR = "yt_bot_logs"
+#     if os.path.exists(LOGS_DIR) and not os.path.isdir(LOGS_DIR):
+#         os.remove(LOGS_DIR)
+#     os.makedirs(LOGS_DIR, exist_ok=True)
 
 
 def printl(*args, **kwargs):
@@ -85,8 +92,8 @@ class Database:
         self.conn.close()
 
 
-def get_video_info(url: str) -> dict:
-    if PRINT_LOGS:
+def get_video_info(url: str, logs=False) -> dict:
+    if PRINT_LOGS and logs:
         printl(f"Fetching {url}")
     yt = pytube.YouTube(url)
     yt.bypass_age_gate()
@@ -128,7 +135,7 @@ def get_video_info(url: str) -> dict:
             stream_info["height"] = resolutions.get(stream.itag, {"height": None})["height"],
             video_info["video"].append(stream_info)
 
-    if PRINT_LOGS:
+    if PRINT_LOGS and logs:
         printl(f"Parsed info from {url}.")
 
     return video_info
@@ -152,7 +159,7 @@ def generate_download_options(video_info: dict) -> list[dict]:
     videos = sorted(video_info["video"], key=lambda x: int(x["resolution"][:-1]))
     audios = sorted(video_info["audio"], key=lambda x: int(x["bitrate"][:-4]))
     for vid in videos:
-        msg.append({"msg": f"{vid['resolution']}/{vid['fps']}fps:  {vid['filesize_mb']}mb",
+        msg.append({"msg": f"{vid['resolution']}/{vid['fps']}fps:  {vid['filesize_mb']}mb" + ("🚀" if vid["is_progressive"] else ""),
                     "itag": vid["stream"].itag, "type": "video"})
     for aud in audios:
         msg.append({"msg": f"🔊 {aud['bitrate']:>8}  {aud['filesize_mb']}mb{'  ' + aud['lang'] if aud['lang'] else ''}",
@@ -208,12 +215,11 @@ def generate_link_reply_message(video_info: dict) -> str:
     return "\n".join(msg)
 
 
-def download_from_youtube(stream) -> str:
-    filename = str(stream.default_filename)
+def download_from_youtube(stream: pytube.Stream, filename) -> str:
     if PRINT_LOGS:
         printl(f"Downloading {filename}")
     try:
-        stream.download()
+        stream.download(filename=filename)
     except Exception:
         printl(f"Download error {filename}")
     else:
@@ -222,18 +228,19 @@ def download_from_youtube(stream) -> str:
     return filename
 
 
-def merge_audio_and_video(audio_path: str, video_path: str, title: str) -> None:
+def merge_audio_and_video(audio_path: str, video_path: str, output_file: str) -> None:
     # ffmpeg -i video.mp4 -i audio.wav -c:v copy -c:a aac output.mp4
     # ffmpeg -i video.mp4 -i audio.wav -c:v copy output.mp4
     # ffmpeg -i video.mp4 -i audio.wav -c copy output.mkv
     if PRINT_LOGS:
-        printl(f"Merging {title}")
+        printl(f"Merging {output_file}")
     cmd = f"ffmpeg -loglevel quiet -i \"{video_path}\" -i \"{audio_path}\" -c:v copy "\
-          f"\"{title}\" && rm \"{video_path}\" && rm \"{audio_path}\""
+          f"\"{output_file}\" && rm \"{video_path}\" && rm \"{audio_path}\""
     if os.system(cmd) != 0:
         printl("Merging error")
     elif PRINT_LOGS:
-        printl(f"Merged {title}.")
+        printl(f"Merged {output_file}.")
+    return output_file
 
 
 def convert2mp3(filename: str) -> str:
@@ -270,6 +277,22 @@ def generate_success_message(video_info, type_: str, res=None, fps=None, bitrate
     return link
 
 
+def make_unique_filename(filename: str) -> str:
+    listdir = os.listdir()
+    if filename not in listdir:
+        return filename
+    title, _, extension = filename.rpartition(".")
+    new_filename = f"{title}_2.{extension}"
+    if new_filename not in listdir:
+        return new_filename
+    listdir = [i for i in listdir if i.startswith(title) and i.endswith(extension)]
+    i = 3
+    while new_filename in listdir:
+        i += 1
+        new_filename = f"{title}_{i}.{extension}"
+    return new_filename
+
+
 local_server = TelegramAPIServer.from_base("http://localhost:8081")
 
 bot = Bot(token=TOKEN, server=local_server)
@@ -277,119 +300,110 @@ dp = Dispatcher(bot)
 
 db = Database()
 db.create_tables()
-streams = {}
 
 
 @dp.callback_query_handler()
 async def report(call):
+    itag, type_ = call.data.split()
     video_url = call.message.caption_entities[0].url
+    stream = video_size_with_sound_normalizer(get_video_info(video_url))
 
     await bot.edit_message_caption(chat_id=call.from_user.id,
                                    caption=generate_video_title_and_author_message(
-                                       streams[call.from_user.id][video_url]) + "\n📥 Downloading\\.\\.\\.",
+                                       stream) + "\n📥 Downloading\\.\\.\\.",
                                    message_id=call.message.message_id,
                                    parse_mode="MarkdownV2")
 
-    itag, type_ = call.data.split()
-    stream = [i for i in streams[call.from_user.id][video_url][type_] if str(i["stream"].itag) == itag][0]
+    stream = [i for i in stream[type_] if str(i["stream"].itag) == itag][0]
     if stream["filesize_mb"] >= UPLOAD_FILE_SIZE_LIMIT_MB:
         await bot.send_message(call.from_user.id,
-                               generate_video_title_and_author_message(streams[call.from_user.id][video_url]) + f"\n🛑 Cannot send the file \\({UPLOAD_FILE_SIZE_LIMIT_MB} Mb limit\\)",
+                               generate_video_title_and_author_message(stream) + f"\n🛑 Cannot send the file \\({UPLOAD_FILE_SIZE_LIMIT_MB} Mb limit\\)",
                                parse_mode="MarkdownV2")
         await bot.delete_message(call.from_user.id, call.message.message_id)
-        del streams[call.from_user.id][video_url]
         if PRINT_LOGS:
             printl(f"{UPLOAD_FILE_SIZE_LIMIT_MB} Mb limit error for {stream['default_filename']}.")
         return
-    filename = download_from_youtube(stream["stream"])
-    title = filename[:]
+    unique_filename = make_unique_filename(f"{video_url[-11:]}.{stream.default_filename.split('.')[-1]}")
+    filename = download_from_youtube(stream["stream"], unique_filename)
 
     if type_ == "video" and not stream["is_progressive"]:
-        title = str(stream["default_filename"])
-        os.rename(filename, f"{filename}{call.from_user.id}video")
-        filename += f"{call.from_user.id}video"
-
-        audio_stream = max(streams[call.from_user.id][video_url]["audio"],
-                           key=lambda x: int(x["bitrate"][:-4]))["stream"]
-        audio_filename = download_from_youtube(audio_stream)
-        os.rename(audio_filename, f"{audio_filename}{call.from_user.id}audio")
-        audio_filename += f"{call.from_user.id}audio"
+        # Somehow ask the user to choose the language!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        audio_stream = max(stream["audio"], key=lambda x: int(x["bitrate"][:-4]))["stream"]
+        download_audio_filename = make_unique_filename(f"{video_url[-11:]}.{audio_stream.default_filename.split('.')[-1]}")
+        audio_filename = download_from_youtube(audio_stream, download_audio_filename)
         await bot.edit_message_caption(chat_id=call.from_user.id,
                                        caption=generate_video_title_and_author_message(
-                                           streams[call.from_user.id][video_url]) + "\n📦 Merging\\.\\.\\.",
+                                           stream) + "\n📦 Merging\\.\\.\\.",
                                        message_id=call.message.message_id,
                                        parse_mode="MarkdownV2")
-        merge_audio_and_video(audio_filename, filename, title)
+        filename = merge_audio_and_video(audio_filename, filename, make_unique_filename(filename))
 
-    preview_url = streams[call.from_user.id][video_url]["info"]["thumbnail_url"]
+    if type_ == "audio" and not filename.endswith("mp3"):
+        filename = convert2mp3(filename)
 
-    if type_ == "audio" and not title.endswith("mp3"):
-        title = convert2mp3(title)
+    if type_ == "video" and not filename.endswith("mp4"):
+        filename = convert2mp4(filename)
 
-    if type_ == "video" and not title.endswith("mp4"):
-        title = convert2mp4(title)
+    preview_url = stream["info"]["thumbnail_url"]
 
     if type_ == "video":
         try:
             await bot.edit_message_caption(chat_id=call.from_user.id,
                                            caption=generate_video_title_and_author_message(
-                                               streams[call.from_user.id][video_url]) + "\n📤 Uploading\\.\\.\\.",
+                                               stream) + "\n📤 Uploading\\.\\.\\.",
                                            message_id=call.message.message_id,
                                            parse_mode="MarkdownV2")
             await bot.send_chat_action(call.from_user.id, "upload_video")
             if PRINT_LOGS:
-                printl(f"Sending {title}")
-            await bot.send_video(chat_id=call.from_user.id, video=types.InputFile(title),
+                printl(f"Sending {filename}")
+            await bot.send_video(chat_id=call.from_user.id, video=types.InputFile(filename),
                                  supports_streaming=True,
-                                 caption=generate_success_message(streams[call.from_user.id][video_url], type_="video",
+                                 caption=generate_success_message(stream, type_="video",
                                                                   res=stream["resolution"], fps=stream["fps"]),
                                  thumb=BytesIO(urllib.request.urlopen(preview_url).read()),
-                                 duration=streams[call.from_user.id][video_url]["info"]["length"],
+                                 duration=stream["info"]["length"],
                                  parse_mode="MarkdownV2", width=stream["width"], height=stream["height"])
             if PRINT_LOGS:
-                printl(f"Sent {title}.")
+                printl(f"Sent {filename}.")
             db.used(call.from_user.id)
         except sql.ProgrammingError as exc:
             if PRINT_LOGS:
-                printl(f"{exc} {title}.")
+                printl(f"{exc} {filename}.")
         except Exception as exc:
             await bot.send_message(call.from_user.id,
                                    generate_video_title_and_author_message(
-                                       streams[call.from_user.id][video_url]) + "\n🛑 Could not send the video file",
+                                       stream) + "\n🛑 Could not send the video file",
                                    parse_mode="MarkdownV2")
             if PRINT_LOGS:
-                printl(f"{exc} {title}.")
+                printl(f"{exc} {filename}.")
 
     elif type_ == "audio":
         try:
             await bot.send_chat_action(call.from_user.id, "upload_audio")
             if PRINT_LOGS:
-                printl(f"Sending {title}")
-            await bot.send_audio(call.from_user.id, types.InputFile(title),
-                                 caption=generate_success_message(streams[call.from_user.id][video_url], type_="audio",
+                printl(f"Sending {filename}")
+            await bot.send_audio(call.from_user.id, types.InputFile(filename),
+                                 caption=generate_success_message(stream, type_="audio",
                                                                   bitrate=stream["bitrate"]),
                                  parse_mode="MarkdownV2",
-                                 duration=streams[call.from_user.id][video_url]["info"]["length"],
-                                 performer=streams[call.from_user.id][video_url]["info"]["author"],
+                                 duration=stream["info"]["length"],
+                                 performer=stream["info"]["author"],
                                  thumb=BytesIO(urllib.request.urlopen(preview_url).read()))
             if PRINT_LOGS:
-                printl(f"Sent {title}.")
+                printl(f"Sent {filename}.")
             db.used(call.from_user.id)
         except sql.ProgrammingError as exc:
             if PRINT_LOGS:
-                printl(f"{exc} {title}.")
+                printl(f"{exc} {filename}.")
         except Exception as exc:
             if PRINT_LOGS:
-                printl(f"{exc} {title}.")
+                printl(f"{exc} {filename}.")
             await bot.send_message(call.from_user.id,
                                    generate_video_title_and_author_message(
-                                       streams[call.from_user.id][video_url]) + "\n🛑 Could not send the audio file",
+                                       stream) + "\n🛑 Could not send the audio file",
                                    parse_mode="MarkdownV2")
-
     await bot.delete_message(call.from_user.id, call.message.message_id)
-
-    os.remove(title)
-    del streams[call.from_user.id][video_url]
+    os.remove(filename)
 
 
 @dp.message_handler(content_types=["text"])
@@ -402,9 +416,8 @@ async def get_text(message):
 
     elif video_url_match(message.text):
         try:
-            info = get_video_info(message.text)
+            info = get_video_info(message.text, logs=True)
             info = video_size_with_sound_normalizer(info)
-            streams.setdefault(message.chat.id, {})[info["info"]["watch_url"]] = info
         except pytube.exceptions.AgeRestrictedError as exc:
             printl(exc)
             await bot.send_message(message.chat.id, f"🚫 [This video]({markdown_prepare(message.text)}) is age restricted\\.",
@@ -435,6 +448,7 @@ async def get_text(message):
 executor.start_polling(dp, skip_updates=True)
 
 # TODO
+# Mark progressive videos
 # Logging to file
 # Video and audio language choice
 # Thumbnail ratio
