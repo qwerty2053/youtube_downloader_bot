@@ -329,7 +329,7 @@ async def report(call):
     if type_ == "video" and not stream["is_progressive"]:
         # Somehow ask the user to choose the language!!!!!!!!!!!!!!!!!!!!!!!!!!!
         audio_stream = max(video_info["audio"], key=lambda x: int(x["bitrate"][:-4]))["stream"]
-        download_audio_filename = make_unique_filename(f"{video_url[-11:]}.{audio_stream['default_filename'].split('.')[-1]}")
+        download_audio_filename = make_unique_filename(f"{video_url[-11:]}.{audio_stream.default_filename.split('.')[-1]}")
         audio_filename = download_from_youtube(audio_stream, download_audio_filename)
         await bot.edit_message_caption(chat_id=call.from_user.id,
                                        caption=generate_video_title_and_author_message(
