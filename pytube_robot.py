@@ -306,18 +306,18 @@ db.create_tables()
 async def report(call):
     itag, type_ = call.data.split()
     video_url = call.message.caption_entities[0].url
-    stream = video_size_with_sound_normalizer(get_video_info(video_url))
+    video_info = video_size_with_sound_normalizer(get_video_info(video_url))
 
     await bot.edit_message_caption(chat_id=call.from_user.id,
                                    caption=generate_video_title_and_author_message(
-                                       stream) + "\n📥 Downloading\\.\\.\\.",
+                                       video_info) + "\n📥 Downloading\\.\\.\\.",
                                    message_id=call.message.message_id,
                                    parse_mode="MarkdownV2")
 
-    stream = [i for i in stream[type_] if str(i["stream"].itag) == itag][0]
+    stream = [i for i in video_info[type_] if str(i["stream"].itag) == itag][0]
     if stream["filesize_mb"] >= UPLOAD_FILE_SIZE_LIMIT_MB:
         await bot.send_message(call.from_user.id,
-                               generate_video_title_and_author_message(stream) + f"\n🛑 Cannot send the file \\({UPLOAD_FILE_SIZE_LIMIT_MB} Mb limit\\)",
+                               generate_video_title_and_author_message(video_info) + f"\n🛑 Cannot send the file \\({UPLOAD_FILE_SIZE_LIMIT_MB} Mb limit\\)",
                                parse_mode="MarkdownV2")
         await bot.delete_message(call.from_user.id, call.message.message_id)
         if PRINT_LOGS:
@@ -328,12 +328,12 @@ async def report(call):
 
     if type_ == "video" and not stream["is_progressive"]:
         # Somehow ask the user to choose the language!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        audio_stream = max(stream["audio"], key=lambda x: int(x["bitrate"][:-4]))["stream"]
+        audio_stream = max(video_info["audio"], key=lambda x: int(x["bitrate"][:-4]))["stream"]
         download_audio_filename = make_unique_filename(f"{video_url[-11:]}.{audio_stream.default_filename.split('.')[-1]}")
         audio_filename = download_from_youtube(audio_stream, download_audio_filename)
         await bot.edit_message_caption(chat_id=call.from_user.id,
                                        caption=generate_video_title_and_author_message(
-                                           stream) + "\n📦 Merging\\.\\.\\.",
+                                           video_info) + "\n📦 Merging\\.\\.\\.",
                                        message_id=call.message.message_id,
                                        parse_mode="MarkdownV2")
         filename = merge_audio_and_video(audio_filename, filename, make_unique_filename(filename))
@@ -344,13 +344,13 @@ async def report(call):
     if type_ == "video" and not filename.endswith("mp4"):
         filename = convert2mp4(filename)
 
-    preview_url = stream["info"]["thumbnail_url"]
+    preview_url = video_info["info"]["thumbnail_url"]
 
     if type_ == "video":
         try:
             await bot.edit_message_caption(chat_id=call.from_user.id,
                                            caption=generate_video_title_and_author_message(
-                                               stream) + "\n📤 Uploading\\.\\.\\.",
+                                               video_info) + "\n📤 Uploading\\.\\.\\.",
                                            message_id=call.message.message_id,
                                            parse_mode="MarkdownV2")
             await bot.send_chat_action(call.from_user.id, "upload_video")
@@ -358,10 +358,10 @@ async def report(call):
                 printl(f"Sending {filename}")
             await bot.send_video(chat_id=call.from_user.id, video=types.InputFile(filename),
                                  supports_streaming=True,
-                                 caption=generate_success_message(stream, type_="video",
+                                 caption=generate_success_message(video_info, type_="video",
                                                                   res=stream["resolution"], fps=stream["fps"]),
                                  thumb=BytesIO(urllib.request.urlopen(preview_url).read()),
-                                 duration=stream["info"]["length"],
+                                 duration=video_info["info"]["length"],
                                  parse_mode="MarkdownV2", width=stream["width"], height=stream["height"])
             if PRINT_LOGS:
                 printl(f"Sent {filename}.")
@@ -372,7 +372,7 @@ async def report(call):
         except Exception as exc:
             await bot.send_message(call.from_user.id,
                                    generate_video_title_and_author_message(
-                                       stream) + "\n🛑 Could not send the video file",
+                                       video_info) + "\n🛑 Could not send the video file",
                                    parse_mode="MarkdownV2")
             if PRINT_LOGS:
                 printl(f"{exc} {filename}.")
@@ -383,11 +383,11 @@ async def report(call):
             if PRINT_LOGS:
                 printl(f"Sending {filename}")
             await bot.send_audio(call.from_user.id, types.InputFile(filename),
-                                 caption=generate_success_message(stream, type_="audio",
+                                 caption=generate_success_message(video_info, type_="audio",
                                                                   bitrate=stream["bitrate"]),
                                  parse_mode="MarkdownV2",
-                                 duration=stream["info"]["length"],
-                                 performer=stream["info"]["author"],
+                                 duration=video_info["info"]["length"],
+                                 performer=video_info["info"]["author"],
                                  thumb=BytesIO(urllib.request.urlopen(preview_url).read()))
             if PRINT_LOGS:
                 printl(f"Sent {filename}.")
@@ -400,7 +400,7 @@ async def report(call):
                 printl(f"{exc} {filename}.")
             await bot.send_message(call.from_user.id,
                                    generate_video_title_and_author_message(
-                                       stream) + "\n🛑 Could not send the audio file",
+                                       video_info) + "\n🛑 Could not send the audio file",
                                    parse_mode="MarkdownV2")
     await bot.delete_message(call.from_user.id, call.message.message_id)
     os.remove(filename)
