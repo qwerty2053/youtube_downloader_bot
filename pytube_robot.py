@@ -282,11 +282,12 @@ def make_unique_filename(filename: str) -> str:
     if filename not in listdir:
         return filename
     title, _, extension = filename.rpartition(".")
-    new_filename = f"{title}_2.{extension}"
-    if new_filename not in listdir:
-        return new_filename
     listdir = [i for i in listdir if i.startswith(title) and i.endswith(extension)]
-    i = 3
+    if "_" in title:
+        i = int(title[title.rfind("_"):]) + 1
+    else:
+        i = 2
+    new_filename = f"{title}_{i}.{extension}"
     while new_filename in listdir:
         i += 1
         new_filename = f"{title}_{i}.{extension}"
