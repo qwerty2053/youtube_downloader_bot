@@ -285,6 +285,7 @@ db.create_tables()
 @dp.callback_query_handler()
 async def report(call):
     itag, type_ = call.data.split()
+    default_ext = "mp4" if type_ == "video" else "mp3"
     video_url = call.message.caption_entities[0].url
     video_info = video_size_with_sound_normalizer(get_video_info(video_url))
 
@@ -303,7 +304,7 @@ async def report(call):
         if PRINT_LOGS:
             printl(f"{UPLOAD_FILE_SIZE_LIMIT_MB} Mb limit error for {stream['default_filename']}.")
         return
-    unique_filename = make_unique_filename(f"{video_url[-11:]}.mp4")
+    unique_filename = make_unique_filename(f"{video_url[-11:]}.{default_ext}")
     filename = download_from_youtube(stream["stream"], unique_filename)
 
     if type_ == "video" and not stream["is_progressive"]:
