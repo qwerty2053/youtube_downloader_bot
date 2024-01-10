@@ -243,30 +243,6 @@ def merge_audio_and_video(audio_path: str, video_path: str, output_file: str) ->
     return output_file
 
 
-def convert2mp3(filename: str) -> str:
-    fname_mp3 = filename[:filename.rfind(".")] + ".mp3"
-    cmd = f"ffmpeg -loglevel quiet -n -i \"{filename}\" -vn \"{fname_mp3}\" && rm \"{filename}\""
-    if PRINT_LOGS:
-        printl(f"Converting to mp3 {filename}")
-    if os.system(cmd) != 0:
-        printl(f"Converting error {filename}")
-    elif PRINT_LOGS:
-        printl(f"Converted to {fname_mp3}.")
-    return fname_mp3
-
-
-# def convert2mp4(filename: str) -> str:
-#     fname_mp4 = filename[:filename.rfind(".")] + ".mp4"
-#     cmd = f"ffmpeg -loglevel quiet -i \"{filename}\" -c copy \"{fname_mp4}\" && rm \"{filename}\""
-#     if PRINT_LOGS:
-#         printl(f"Converting to mp4 {filename}")
-#     if os.system(cmd) != 0:
-#         printl(f"Converting error {filename}")
-#     elif PRINT_LOGS:
-#         printl(f"Converted to {fname_mp4}.")
-#     return fname_mp4
-
-
 def generate_success_message(video_info, type_: str, res=None, fps=None, bitrate=None) -> str:
     link = generate_video_title_and_author_message(video_info)
     if type_ == "video":
@@ -341,12 +317,6 @@ async def report(call):
                                        message_id=call.message.message_id,
                                        parse_mode="MarkdownV2")
         filename = merge_audio_and_video(audio_filename, filename, make_unique_filename(filename))
-
-    if type_ == "audio" and not filename.endswith("mp3"):
-        filename = convert2mp3(filename)
-
-    # if type_ == "video" and not filename.endswith("mp4"):
-    #     filename = convert2mp4(filename)
 
     preview_url = video_info["info"]["thumbnail_url"]
 
