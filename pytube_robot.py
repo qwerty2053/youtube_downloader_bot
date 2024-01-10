@@ -234,7 +234,7 @@ def merge_audio_and_video(audio_path: str, video_path: str, output_file: str) ->
     # ffmpeg -i video.mp4 -i audio.wav -c copy output.mkv
     if PRINT_LOGS:
         printl(f"Merging {output_file}")
-    cmd = f"ffmpeg -loglevel quiet -i \"{video_path}\" -i \"{audio_path}\" -c:v copy "\
+    cmd = f"ffmpeg -loglevel quiet -n -i \"{video_path}\" -i \"{audio_path}\" -c copy "\
           f"\"{output_file}\" && rm \"{video_path}\" && rm \"{audio_path}\""
     if os.system(cmd) != 0:
         printl("Merging error")
@@ -245,7 +245,7 @@ def merge_audio_and_video(audio_path: str, video_path: str, output_file: str) ->
 
 def convert2mp3(filename: str) -> str:
     fname_mp3 = filename[:filename.rfind(".")] + ".mp3"
-    cmd = f"ffmpeg -loglevel quiet -i \"{filename}\" -vn \"{fname_mp3}\" && rm \"{filename}\""
+    cmd = f"ffmpeg -loglevel quiet -n -i \"{filename}\" -vn \"{fname_mp3}\" && rm \"{filename}\""
     if PRINT_LOGS:
         printl(f"Converting to mp3 {filename}")
     if os.system(cmd) != 0:
@@ -255,16 +255,16 @@ def convert2mp3(filename: str) -> str:
     return fname_mp3
 
 
-def convert2mp4(filename: str) -> str:
-    fname_mp4 = filename[:filename.rfind(".")] + ".mp4"
-    cmd = f"ffmpeg -loglevel quiet -i \"{filename}\" -c copy \"{fname_mp4}\" && rm \"{filename}\""
-    if PRINT_LOGS:
-        printl(f"Converting to mp4 {filename}")
-    if os.system(cmd) != 0:
-        printl(f"Converting error {filename}")
-    elif PRINT_LOGS:
-        printl(f"Converted to {fname_mp4}.")
-    return fname_mp4
+# def convert2mp4(filename: str) -> str:
+#     fname_mp4 = filename[:filename.rfind(".")] + ".mp4"
+#     cmd = f"ffmpeg -loglevel quiet -i \"{filename}\" -c copy \"{fname_mp4}\" && rm \"{filename}\""
+#     if PRINT_LOGS:
+#         printl(f"Converting to mp4 {filename}")
+#     if os.system(cmd) != 0:
+#         printl(f"Converting error {filename}")
+#     elif PRINT_LOGS:
+#         printl(f"Converted to {fname_mp4}.")
+#     return fname_mp4
 
 
 def generate_success_message(video_info, type_: str, res=None, fps=None, bitrate=None) -> str:
@@ -278,11 +278,11 @@ def generate_success_message(video_info, type_: str, res=None, fps=None, bitrate
 
 
 def make_unique_filename(filename: str) -> str:
-    listdir = os.listdir()
+    listdir = set(os.listdir())
     if filename not in listdir:
         return filename
     title, _, extension = filename.rpartition(".")
-    if "_" in title:
+    if "_" in title[11:]:
         title, _, i = title.rpartition("_")
         i = int(i) + 1
     else:
@@ -298,6 +298,7 @@ def make_unique_filename(filename: str) -> str:
 
 local_server = TelegramAPIServer.from_base("http://localhost:8081")
 
+# try/except local server not responding
 bot = Bot(token=TOKEN, server=local_server)
 dp = Dispatcher(bot)
 
@@ -326,7 +327,7 @@ async def report(call):
         if PRINT_LOGS:
             printl(f"{UPLOAD_FILE_SIZE_LIMIT_MB} Mb limit error for {stream['default_filename']}.")
         return
-    unique_filename = make_unique_filename(f"{video_url[-11:]}.{stream['default_filename'].split('.')[-1]}")
+    unique_filename = make_unique_filename(f"{video_url[-11:]}.mp4")
     filename = download_from_youtube(stream["stream"], unique_filename)
 
     if type_ == "video" and not stream["is_progressive"]:
@@ -344,8 +345,8 @@ async def report(call):
     if type_ == "audio" and not filename.endswith("mp3"):
         filename = convert2mp3(filename)
 
-    if type_ == "video" and not filename.endswith("mp4"):
-        filename = convert2mp4(filename)
+    # if type_ == "video" and not filename.endswith("mp4"):
+    #     filename = convert2mp4(filename)
 
     preview_url = video_info["info"]["thumbnail_url"]
 
@@ -415,7 +416,7 @@ async def get_text(message):
         user_name = message.from_user.first_name
         await bot.send_message(message.chat.id,
                                f"""👋 Hi {user_name}. Send me a YouTube video link"""
-                               """ and I"ll download that video or audio.""")
+                               """ and I"ll download it as video or audio.""")
 
     elif video_url_match(message.text):
         try:
@@ -451,11 +452,10 @@ async def get_text(message):
 executor.start_polling(dp, skip_updates=True)
 
 # TODO
-# Mark progressive videos
 # Logging to file
 # Video and audio language choice
 # Thumbnail ratio
-# Speed up merging audio and video
 # Bypass age limit w/ logging in to a google account
 # Use database
 # Handle possible errors
+# add cutting the video and audio
