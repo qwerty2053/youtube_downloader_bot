@@ -25,7 +25,7 @@ if subprocess.getstatusoutput("ffmpeg")[0] != 1:
     print("ffmpeg is not installed")
     exit(1)
 
-TOKEN = "6108391846:AAGB8WgwZRnZMS4FsO3mHpUY-hEiP3fsajQ"
+TOKEN = "YOUR-TELEGRAM-BOT-API-KEY"
 ESCAPE_CHARS_REGEX = re.compile(r"[_*\\~`>#+\-=|{}.!()\[\]]")
 VIDEO_URL_REGEX = re.compile(r"^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube(-nocookie)?\.com|youtu.be))(\/(?:["
                              r"\w\-]+\?v=|embed\/|live\/|v\/)?)([\w\-]+)(\S+)?$")
