@@ -9,7 +9,7 @@ Then download the bot and its dependencies:
 ```sh
 git clone https://github.com/qwerty2053/youtube_downloader_bot.git
 cd youtube_downloader_bot
-pip install aiogram==2.25.1 pytube
+pip install -r requirements.txt
 sudo apt install ffmpeg
 ```
 
