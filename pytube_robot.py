@@ -1,15 +1,6 @@
-try:
-    from aiogram import Bot, Dispatcher, executor, types
-    from aiogram.bot.api import TelegramAPIServer
-except ImportError:
-    print("aiogram module is not installed.")
-    exit(1)
-
-try:
-    import pytube
-except ImportError:
-    print("pytube module is not installed.")
-    exit(1)
+from aiogram import Bot, Dispatcher, executor, types
+from aiogram.bot.api import TelegramAPIServer
+import pytube
 
 from datetime import datetime
 from io import BytesIO
@@ -34,13 +25,6 @@ DB_FILENAME = "youtube_bot_database.db"
 UPLOAD_FILE_SIZE_LIMIT_MB = 2000
 
 logging.basicConfig(level=logging.INFO)
-
-# STORE_LOGS_IN_FILES = True
-# if STORE_LOGS_IN_FILES:
-#     LOGS_DIR = "yt_bot_logs"
-#     if os.path.exists(LOGS_DIR) and not os.path.isdir(LOGS_DIR):
-#         os.remove(LOGS_DIR)
-#     os.makedirs(LOGS_DIR, exist_ok=True)
 
 
 def printl(*args, **kwargs):
@@ -274,7 +258,6 @@ def make_unique_filename(filename: str) -> str:
 
 local_server = TelegramAPIServer.from_base("http://localhost:8081")
 
-# try/except local server not responding
 bot = Bot(token=TOKEN, server=local_server)
 dp = Dispatcher(bot)
 
@@ -308,7 +291,6 @@ async def report(call):
     filename = download_from_youtube(stream["stream"], unique_filename)
 
     if type_ == "video" and not stream["is_progressive"]:
-        # Somehow ask the user to choose the language!!!!!!!!!!!!!!!!!!!!!!!!!!!
         audio_stream = max(video_info["audio"], key=lambda x: int(x["bitrate"][:-4]))["stream"]
         download_audio_filename = make_unique_filename(f"{video_url[-11:]}.{audio_stream.default_filename.split('.')[-1]}")
         audio_filename = download_from_youtube(audio_stream, download_audio_filename)
@@ -421,12 +403,3 @@ async def get_text(message):
 
 
 executor.start_polling(dp, skip_updates=True)
-
-# TODO
-# Logging to file
-# Video and audio language choice
-# Thumbnail ratio
-# Bypass age limit w/ logging in to a google account
-# Use database
-# Handle possible errors
-# add cutting the video and audio
