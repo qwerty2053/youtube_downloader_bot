@@ -1,4 +1,4 @@
-# YouTube downloader Telegram-bot for personal use.
+# YouTube downloader Telegram bot
 
 
 ## Installation
